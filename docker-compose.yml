@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: maktab-postgres
+    restart: unless-stopped
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_DB: maktab
+      POSTGRES_USER: maktab
+      POSTGRES_PASSWORD: maktab_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  n8n:
+    image: n8nio/n8n
+    container_name: maktab-n8n
+    restart: unless-stopped
+    ports:
+      - '5678:5678'
+    depends_on:
+      - postgres
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme_secure_password
+      - WEBHOOK_URL=http://localhost:5678
+      - GENERIC_TIMEZONE=Asia/Tashkent
+      - WEBHOOK_SECRET=629eff2daddfb08dc1878423ec541ff334a76b6ad6a3be3933861027d7a73c00
+    volumes:
+      - n8n_data:/home/node/.n8n
+
+volumes:
+  postgres_data:
+  n8n_data:
+
+# ─── Usage ────────────────────────────────────────────────────────────────────
+# 1. Start n8n:           docker-compose up -d
+# 2. Open UI:             http://localhost:5678
+# 3. Login:               admin / changeme_secure_password (change this!)
+# 4. For production:      Put behind nginx + certbot for HTTPS
+#    See the guide → Section 9.2
