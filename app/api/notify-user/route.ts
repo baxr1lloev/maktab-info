@@ -11,6 +11,7 @@ export async function POST(req: NextRequest) {
     const { telegram_id, request_id, status, comment } = await req.json()
     const normalizedStatus = String(status).trim()
     if (
+      normalizedStatus !== 'accepted' &&
       normalizedStatus !== 'pending' &&
       normalizedStatus !== 'resolved' &&
       normalizedStatus !== 'rejected'

@@ -11,6 +11,9 @@ if (process.env.NODE_ENV !== 'production') {
 type ComplaintInput = {
   request_id: string
   telegram_id: string | number
+  user_id?: number | null
+  username?: string | null
+  first_name?: string | null
   role: string
   viloyat: string
   tuman?: string | null
@@ -43,6 +46,7 @@ export async function createComplaint(data: ComplaintInput) {
     data: {
       requestId: data.request_id,
       telegramId: String(data.telegram_id),
+      userId: typeof data.user_id === 'number' ? data.user_id : null,
       role: data.role,
       viloyat: data.viloyat,
       tuman: asOptionalString(data.tuman),
@@ -133,10 +137,11 @@ export async function listRecentComplaints(options: ListComplaintsOptions = {}) 
 
   return prisma.complaint.findMany({
     where: status ? { status } : undefined,
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ user: { trustCredits: 'desc' } }, { createdAt: 'asc' }],
     take: Math.min(Math.max(limit, 1), 25),
     select: {
       requestId: true,
+      telegramId: true,
       role: true,
       viloyat: true,
       schoolName: true,
@@ -145,6 +150,35 @@ export async function listRecentComplaints(options: ListComplaintsOptions = {}) 
       description: true,
       status: true,
       createdAt: true,
+      user: {
+        select: {
+          trustCredits: true,
+          balance: true,
+        },
+      },
+    },
+  })
+}
+
+export async function listUserComplaintsByTelegramId(telegramId: string, limit = 20) {
+  const normalizedTelegramId = telegramId.trim()
+  if (!normalizedTelegramId) return []
+
+  return prisma.complaint.findMany({
+    where: {
+      OR: [
+        { telegramId: normalizedTelegramId },
+        { user: { telegramId: normalizedTelegramId } },
+      ],
+    },
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(Math.max(limit, 1), 50),
+    select: {
+      requestId: true,
+      category: true,
+      status: true,
+      createdAt: true,
+      resolvedAt: true,
     },
   })
 }

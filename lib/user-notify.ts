@@ -1,6 +1,6 @@
 import { bot } from '@/lib/bot'
 
-export type ComplaintStatus = 'new' | 'pending' | 'resolved' | 'rejected'
+export type ComplaintStatus = 'new' | 'pending' | 'accepted' | 'resolved' | 'rejected'
 
 function buildUserStatusMessage(
   requestId: string,
@@ -15,6 +15,10 @@ function buildUserStatusMessage(
 
   if (status === 'pending') {
     return `⏳ Заявка ${requestId} принята и взята в работу.`
+  }
+
+  if (status === 'accepted') {
+    return `✅ Заявка ${requestId} подтверждена. Начислено +10 баллов.`
   }
 
   if (status === 'rejected') {
@@ -35,4 +39,3 @@ export async function notifyUserAboutComplaintStatus(input: {
 
   await bot.telegram.sendMessage(String(input.telegramId), message)
 }
-

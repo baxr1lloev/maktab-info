@@ -1,17 +1,22 @@
 import { Telegraf, Markup } from 'telegraf'
 import axios from 'axios'
 import { isAdminUserId } from '@/lib/admin-auth'
+import { ShopError, buyShopItem, listActiveShopItems } from '@/lib/shop'
+import { getUserStats } from '@/lib/scoring'
 
 // Singleton — one instance for the entire server
 const bot = new Telegraf(process.env.BOT_TOKEN!)
 
-type TicketFilter = 'all' | 'new' | 'pending' | 'resolved' | 'rejected'
+type TicketFilter = 'all' | 'new' | 'pending' | 'accepted' | 'resolved' | 'rejected'
 
 const ADMIN_PANEL_BUTTON = '🛠 Админ панель'
+const USER_STATS_BUTTON = '📊 Моя статистика'
+const SHOP_BUTTON = '🛒 Лавка'
 const TICKET_FILTER_LABELS: Record<TicketFilter, string> = {
   all: 'Все последние',
   new: 'Новые',
   pending: 'В работе',
+  accepted: 'Принятые',
   resolved: 'Решенные',
   rejected: 'Отклоненные',
 }
@@ -25,6 +30,13 @@ function isN8nForwardEnabled(): boolean {
 
 function isAdmin(ctx: { from?: { id?: number } }): boolean {
   return isAdminUserId(ctx.from?.id)
+}
+
+function roleLabel(role: string): string {
+  if (role === 'student') return 'Ученик'
+  if (role === 'teacher') return 'Учитель'
+  if (role === 'parent') return 'Родитель'
+  return role
 }
 
 function parseRequestIdFromCloseCommand(text: string): string | null {
@@ -44,6 +56,7 @@ function normalizeTicketFilter(raw?: string): TicketFilter {
   if (
     normalized === 'new' ||
     normalized === 'pending' ||
+    normalized === 'accepted' ||
     normalized === 'resolved' ||
     normalized === 'rejected'
   ) {
@@ -85,6 +98,7 @@ function formatStatus(status: string): string {
   const map: Record<string, string> = {
     new: '🆕 Новая',
     pending: '⏳ В работе',
+    accepted: '✅ Принята',
     resolved: '✅ Решена',
     rejected: '❌ Отклонена',
   }
@@ -110,9 +124,12 @@ function adminMenuKeyboard() {
     ],
     [
       Markup.button.callback('⏳ В работе', 'admin_list_pending'),
-      Markup.button.callback('✅ Решенные', 'admin_list_resolved'),
+      Markup.button.callback('✅ Принятые', 'admin_list_accepted'),
     ],
-    [Markup.button.callback('❌ Отклоненные', 'admin_list_rejected')],
+    [
+      Markup.button.callback('🏁 Решенные', 'admin_list_resolved'),
+      Markup.button.callback('❌ Отклоненные', 'admin_list_rejected'),
+    ],
   ])
 }
 
@@ -151,10 +168,13 @@ async function sendTicketsToAdmin(
         ? `${complaint.description.slice(0, 220)}...`
         : complaint.description
 
+    const trustCredits = complaint.user?.trustCredits ?? 3
+
     const text = [
       `🎫 ${complaint.requestId} (${formatStatus(complaint.status)})`,
       `📅 ${formatDate(complaint.createdAt)}`,
-      `👤 ${complaint.role === 'student' ? 'Ученик' : complaint.role === 'teacher' ? 'Учитель' : complaint.role}`,
+      `👤 ${roleLabel(complaint.role)}`,
+      `⭐ Доверие: ${trustCredits}/3`,
       `📍 ${complaint.viloyat}`,
       `🏫 ${complaint.schoolName}`,
       `📋 ${complaint.category} — ${complaint.subcategory || '—'}`,
@@ -174,6 +194,90 @@ async function sendTicketsToAdmin(
   }
 }
 
+async function sendUserStats(
+  ctx: {
+    from?: { id?: number }
+    reply: (text: string, extra?: any) => Promise<unknown>
+  }
+) {
+  const telegramId = String(ctx.from?.id ?? '')
+  if (!telegramId) {
+    await ctx.reply('Не удалось определить ваш Telegram ID.')
+    return
+  }
+
+  const stats = await getUserStats(telegramId)
+
+  await ctx.reply(
+    [
+      '📊 Ваша статистика:',
+      `💰 Баланс: ${stats.balance} баллов`,
+      `⭐ Кредит доверия: ${stats.trustCredits}/3`,
+      `📋 Всего заявок: ${stats.complaintsCount}`,
+      `✅ Решено: ${stats.resolvedCount}`,
+    ].join('\n')
+  )
+}
+
+async function sendShop(
+  ctx: {
+    reply: (text: string, extra?: any) => Promise<unknown>
+  }
+) {
+  const items = await listActiveShopItems()
+  if (items.length === 0) {
+    await ctx.reply('🛒 Лавка временно пуста.')
+    return
+  }
+
+  await ctx.reply('🛍 Лавка наград. Нажмите кнопку, чтобы купить за баллы.')
+
+  for (const item of items) {
+    const demoLabel = item.type === 'service_demo' ? '🔧 ДЕМО' : ''
+    const stockText =
+      item.stock === -1 ? '∞' : item.stock > 0 ? String(item.stock) : 'нет в наличии'
+
+    await ctx.reply(
+      [
+        `🎁 ${item.title} ${demoLabel}`.trim(),
+        item.description ? `📝 ${item.description}` : '',
+        `💰 Цена: ${item.price} баллов`,
+        `📦 Остаток: ${stockText}`,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      Markup.inlineKeyboard([
+        [Markup.button.callback(`🛒 Купить за ${item.price}`, `shop_buy_${item.id}`)],
+      ])
+    )
+  }
+}
+
+async function callStatusApi(input: {
+  requestId: string
+  status: 'pending' | 'accepted' | 'rejected'
+  comment?: string
+  rejectionReason?: 'fake' | 'other'
+}) {
+  const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/status`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-webhook-secret': process.env.WEBHOOK_SECRET!,
+    },
+    body: JSON.stringify({
+      request_id: input.requestId,
+      status: input.status,
+      comment: input.comment,
+      rejection_reason: input.rejectionReason,
+    }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Status API returned ${response.status}`)
+  }
+}
+
 // State map for tracking users awaiting "after" photo
 const awaitingAfterPhoto = new Map<number, string>() // telegram_id → request_id
 
@@ -189,9 +293,7 @@ async function askForAfterPhoto(ctx: CloseCommandContext, requestId: string | nu
   }
 
   awaitingAfterPhoto.set(ctx.from.id, requestId)
-  await ctx.reply(
-    `📸 Отлично! Пришлите фото «после исправления» для заявки ${requestId}`
-  )
+  await ctx.reply(`📸 Отлично! Пришлите фото «после исправления» для заявки ${requestId}`)
 }
 
 // ─── /start command — show Mini App button ───────────────────────────────────
@@ -212,6 +314,7 @@ bot.start(async (ctx) => {
     '👋 Добро пожаловать в Maktab Infra!\nПодайте жалобу о проблеме в школе через форму ниже:',
     Markup.keyboard([
       [Markup.button.webApp('📱 Открыть форму жалоб', process.env.NEXT_PUBLIC_APP_URL!)],
+      [USER_STATS_BUTTON, SHOP_BUTTON],
     ]).resize()
   )
 })
@@ -235,50 +338,86 @@ bot.command('tickets', async (ctx) => {
   await sendTicketsToAdmin(ctx, filter)
 })
 
+bot.command('mystat', async (ctx) => {
+  await sendUserStats(ctx)
+})
+
+bot.command('shop', async (ctx) => {
+  await sendShop(ctx)
+})
+
 bot.hears(ADMIN_PANEL_BUTTON, async (ctx) => {
   if (!isAdmin(ctx)) return
   await sendAdminMenu(ctx)
 })
 
-bot.action(/^admin_list_(all|new|pending|resolved|rejected)$/, async (ctx) => {
-  if (!isAdmin(ctx)) {
-    await ctx.answerCbQuery('⛔ Нет доступа')
+bot.hears(USER_STATS_BUTTON, async (ctx) => {
+  await sendUserStats(ctx)
+})
+
+bot.hears(SHOP_BUTTON, async (ctx) => {
+  await sendShop(ctx)
+})
+
+bot.action(
+  /^admin_list_(all|new|pending|accepted|resolved|rejected)$/,
+  async (ctx) => {
+    if (!isAdmin(ctx)) {
+      await ctx.answerCbQuery('⛔ Нет доступа')
+      return
+    }
+
+    const filter = (ctx.match[1] ?? 'all') as TicketFilter
+    await ctx.answerCbQuery(`Показываю: ${TICKET_FILTER_LABELS[filter]}`)
+    await sendTicketsToAdmin(ctx, filter)
+  }
+)
+
+bot.action(/^shop_buy_(\d+)$/, async (ctx) => {
+  const itemId = Number(ctx.match[1])
+  const telegramId = String(ctx.from?.id ?? '')
+  if (!telegramId) {
+    await ctx.answerCbQuery('Не удалось определить пользователя')
     return
   }
 
-  const filter = (ctx.match[1] ?? 'all') as TicketFilter
-  await ctx.answerCbQuery(`Показываю: ${TICKET_FILTER_LABELS[filter]}`)
-  await sendTicketsToAdmin(ctx, filter)
+  try {
+    const result = await buyShopItem({ telegramId, itemId })
+    await ctx.answerCbQuery('Покупка успешна!')
+    await ctx.reply(
+      [
+        `✅ Покупка успешно оформлена: ${result.title}`,
+        `🎁 Ваш бонус: ${result.value}`,
+        `💰 Новый баланс: ${result.newBalance} баллов`,
+      ].join('\n')
+    )
+  } catch (error) {
+    if (error instanceof ShopError) {
+      await ctx.answerCbQuery(error.message)
+      return
+    }
+    console.error('Shop buy error:', error)
+    await ctx.answerCbQuery('Ошибка покупки')
+  }
 })
 
 // ─── Admin status buttons ────────────────────────────────────────────────────
-bot.action(/^(approve|pending|reject)_(.+)$/, async (ctx) => {
+bot.action(/^(approve|pending)_(REQ-[\w-]+)$/i, async (ctx) => {
   if (!isAdmin(ctx)) {
     await ctx.answerCbQuery('⛔ Нет доступа')
     return
   }
 
   const [, action, requestId] = ctx.match
-  const statusMap: Record<string, { label: string; status: string }> = {
-    approve: { label: 'Подтверждена ✅ (опубликовано в закрытый канал)', status: 'resolved' },
-    pending: { label: 'В работе ⏳',  status: 'pending'  },
-    reject:  { label: 'Отклонена ❌', status: 'rejected' },
+  const statusMap: Record<'approve' | 'pending', { label: string; status: 'accepted' | 'pending' }> = {
+    approve: { label: 'Принята ✅ (+10 баллов)', status: 'accepted' },
+    pending: { label: 'В работе ⏳', status: 'pending' },
   }
-  const { label, status } = statusMap[action]
+  const key = action as 'approve' | 'pending'
+  const { label, status } = statusMap[key]
 
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/status`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-webhook-secret': process.env.WEBHOOK_SECRET!,
-      },
-      body: JSON.stringify({ request_id: requestId, status }),
-    })
-
-    if (!response.ok) {
-      throw new Error(`Status API returned ${response.status}`)
-    }
+    await callStatusApi({ requestId, status })
 
     const callbackMessage =
       'message' in ctx.callbackQuery ? ctx.callbackQuery.message : undefined
@@ -289,11 +428,11 @@ bot.action(/^(approve|pending|reject)_(.+)$/, async (ctx) => {
 
     if (originalBody) {
       const pendingKeyboard =
-        action === 'pending'
+        key === 'pending'
           ? Markup.inlineKeyboard([
               [
                 Markup.button.callback('✅ Принять', `approve_${requestId}`),
-                Markup.button.callback('❌ Отменить', `reject_${requestId}`),
+                Markup.button.callback('❌ Отклонить', `reject_${requestId}`),
               ],
             ])
           : undefined
@@ -308,6 +447,53 @@ bot.action(/^(approve|pending|reject)_(.+)$/, async (ctx) => {
     await ctx.answerCbQuery(label)
   } catch (err) {
     console.error('Error updating status from bot action:', err)
+    await ctx.answerCbQuery('Ошибка обновления статуса')
+  }
+})
+
+bot.action(/^reject_(REQ-[\w-]+)$/i, async (ctx) => {
+  if (!isAdmin(ctx)) {
+    await ctx.answerCbQuery('⛔ Нет доступа')
+    return
+  }
+
+  const requestId = ctx.match[1]
+  await ctx.answerCbQuery('Выберите причину отклонения')
+  await ctx.reply(
+    `❌ Укажите причину отклонения заявки ${requestId}:`,
+    Markup.inlineKeyboard([
+      [Markup.button.callback('🚫 Фейк (снять кредит)', `reject_fake_${requestId}`)],
+      [Markup.button.callback('📋 Не по теме (без штрафа)', `reject_other_${requestId}`)],
+    ])
+  )
+})
+
+bot.action(/^reject_(fake|other)_(REQ-[\w-]+)$/i, async (ctx) => {
+  if (!isAdmin(ctx)) {
+    await ctx.answerCbQuery('⛔ Нет доступа')
+    return
+  }
+
+  const [, reason, requestId] = ctx.match
+  const rejectionReason = reason as 'fake' | 'other'
+  const comment = rejectionReason === 'fake' ? 'Фейк' : 'Не по теме'
+  const label =
+    rejectionReason === 'fake'
+      ? 'Отклонена ❌ (фейк, -1 кредит)'
+      : 'Отклонена ❌ (не по теме)'
+
+  try {
+    await callStatusApi({
+      requestId,
+      status: 'rejected',
+      comment,
+      rejectionReason,
+    })
+
+    await ctx.answerCbQuery(label)
+    await ctx.editMessageText(`❌ Заявка ${requestId}\nПричина: ${comment}`)
+  } catch (err) {
+    console.error('Error rejecting ticket with reason:', err)
     await ctx.answerCbQuery('Ошибка обновления статуса')
   }
 })
@@ -343,9 +529,18 @@ bot.on('photo', async (ctx) => {
 
   try {
     // Import db helpers dynamically to avoid circular deps
-    const { updateComplaintField, updateComplaintStatus } = await import('@/lib/db')
+    const { getComplaintByRequestId, updateComplaintField, updateComplaintStatus } =
+      await import('@/lib/db')
+    const { awardResolved } = await import('@/lib/scoring')
+    const complaint = await getComplaintByRequestId(requestId)
+    const wasResolved = complaint.status === 'resolved'
+
     await updateComplaintField(requestId, 'after_file_id', fileId)
     await updateComplaintStatus(requestId, 'resolved')
+
+    if (!wasResolved) {
+      await awardResolved(complaint.telegramId)
+    }
 
     awaitingAfterPhoto.delete(ctx.from.id)
 
@@ -356,7 +551,7 @@ bot.on('photo', async (ctx) => {
       })
     }
 
-    await ctx.reply(`✅ Заявка ${requestId} закрыта! Спасибо за фото.`)
+    await ctx.reply(`✅ Заявка ${requestId} закрыта! Начислено +20 баллов.`)
   } catch (err) {
     console.error('Error closing ticket with after photo:', err)
     await ctx.reply('❌ Ошибка при закрытии заявки. Попробуйте ещё раз.')

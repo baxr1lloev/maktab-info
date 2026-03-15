@@ -5,6 +5,7 @@ import { getClosedChannelChatId } from '@/lib/telegram-chat'
 function roleLabel(role: string): string {
   if (role === 'student') return 'Ученик'
   if (role === 'teacher') return 'Учитель'
+  if (role === 'parent') return 'Родитель'
   return role
 }
 

@@ -49,7 +49,13 @@ function normalizePayload(body: AdminNotificationPayload) {
   const description = asText(body.description).slice(0, 800)
   const roleRaw = asText(body.role, '').toLowerCase()
   const role =
-    roleRaw === 'student' ? 'Ученик' : roleRaw === 'teacher' ? 'Учитель' : asText(body.role)
+    roleRaw === 'student'
+      ? 'Ученик'
+      : roleRaw === 'teacher'
+        ? 'Учитель'
+        : roleRaw === 'parent'
+          ? 'Родитель'
+          : asText(body.role)
   const viloyat = asText(body.viloyat)
   const priority = asText(body.priority, 'low').toLowerCase()
   const beforeFileId = asText(

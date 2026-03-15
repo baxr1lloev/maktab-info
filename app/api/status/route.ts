@@ -4,6 +4,7 @@ import { patchSchoolApi } from '@/lib/school-api'
 import axios from 'axios'
 import { publishComplaintToClosedChannel } from '@/lib/closed-channel-notify'
 import { notifyUserAboutComplaintStatus } from '@/lib/user-notify'
+import { awardAccepted, awardResolved, penalizeFake } from '@/lib/scoring'
 
 function isN8nForwardEnabled(): boolean {
   return (
@@ -19,12 +20,28 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { request_id, status, comment } = await req.json()
+    const { request_id, status, comment, rejection_reason } = await req.json()
     const normalizedStatus = String(status).trim() as
       | 'new'
       | 'pending'
+      | 'accepted'
       | 'resolved'
       | 'rejected'
+    const rejectionReason =
+      typeof rejection_reason === 'string'
+        ? rejection_reason.trim().toLowerCase()
+        : undefined
+
+    if (
+      normalizedStatus !== 'new' &&
+      normalizedStatus !== 'pending' &&
+      normalizedStatus !== 'accepted' &&
+      normalizedStatus !== 'resolved' &&
+      normalizedStatus !== 'rejected'
+    ) {
+      return NextResponse.json({ error: 'Unknown status' }, { status: 400 })
+    }
+
     const complaint = await getComplaintByRequestId(request_id)
     const wasResolved = complaint.status === 'resolved'
     const statusChanged = complaint.status !== normalizedStatus
@@ -68,7 +85,8 @@ export async function POST(req: NextRequest) {
 
     const notifyUserPromise =
       statusChanged &&
-      (normalizedStatus === 'pending' ||
+      (normalizedStatus === 'accepted' ||
+        normalizedStatus === 'pending' ||
         normalizedStatus === 'resolved' ||
         normalizedStatus === 'rejected')
         ? notifyUserAboutComplaintStatus({
@@ -81,12 +99,34 @@ export async function POST(req: NextRequest) {
           })
         : Promise.resolve()
 
+    const scoringPromise =
+      statusChanged
+        ? (async () => {
+            if (normalizedStatus === 'accepted') {
+              await awardAccepted(complaint.telegramId)
+              return
+            }
+
+            if (normalizedStatus === 'resolved' && !wasResolved) {
+              await awardResolved(complaint.telegramId)
+              return
+            }
+
+            if (normalizedStatus === 'rejected' && rejectionReason === 'fake') {
+              await penalizeFake(complaint.telegramId)
+            }
+          })().catch((error) => {
+            console.error('Scoring update failed:', error)
+          })
+        : Promise.resolve()
+
     await Promise.all([
       updateComplaintStatus(request_id, normalizedStatus, comment),
       schoolApiPromise,
       n8nStatusPromise,
       publishToClosedChannelPromise,
       notifyUserPromise,
+      scoringPromise,
     ])
 
     return NextResponse.json({ ok: true })

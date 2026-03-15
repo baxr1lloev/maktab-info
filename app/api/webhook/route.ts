@@ -4,6 +4,8 @@ import { createComplaint } from '@/lib/db'
 import axios from 'axios'
 import { sendAdminComplaintNotification } from '@/lib/admin-notify'
 import { findSchoolByInn, findSchoolByUid } from '@/lib/school-directory'
+import { ensureUser } from '@/lib/scoring'
+import { parseTelegramUserFromInitData } from '@/lib/telegram-webapp-auth'
 
 function isN8nForwardEnabled(): boolean {
   return (
@@ -45,6 +47,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const initDataUser = parseTelegramUserFromInitData(initData)
+    const telegramId =
+      initDataUser?.id ??
+      asOptionalString(
+        typeof body?.telegram_id === 'string' || typeof body?.telegram_id === 'number'
+          ? String(body.telegram_id)
+          : ''
+      )
+
+    if (!telegramId) {
+      return NextResponse.json({ error: 'Missing telegram_id' }, { status: 400 })
+    }
+
+    const user = await ensureUser({
+      telegramId,
+      username: initDataUser?.username,
+      firstName: initDataUser?.firstName,
+    })
+
+    if (user.trustCredits <= 0) {
+      return NextResponse.json(
+        {
+          error:
+            'Ваш аккаунт заблокирован из-за нарушений. Обратитесь к администратору.',
+        },
+        { status: 403 }
+      )
+    }
+
     const schoolUid = asOptionalString(body?.school_uid)
     const schoolInn = asOptionalString(body?.school_inn)
     const hasPhoto = asBoolean(body?.has_photo)
@@ -74,7 +105,8 @@ export async function POST(req: NextRequest) {
     const requestId = `REQ-${Date.now().toString().slice(-4)}`
     const payload = {
       request_id: requestId,
-      telegram_id: String(body?.telegram_id ?? ''),
+      telegram_id: telegramId,
+      user_id: user.id,
       init_data: initData,
       role: normalizeRole(body?.role),
       viloyat,

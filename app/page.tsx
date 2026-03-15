@@ -37,6 +37,13 @@ type SchoolsResponse = {
   schools: SchoolOption[]
 }
 
+type UserMeResponse = {
+  ok: boolean
+  balance: number
+  trustCredits: number
+  blocked?: boolean
+}
+
 const ROLE_OPTIONS = [
   { id: 'student', label: 'Ученик' },
   { id: 'teacher', label: 'Учитель' },
@@ -102,6 +109,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [requestId, setRequestId] = useState('')
+  const [score, setScore] = useState<{ balance: number; trustCredits: number } | null>(null)
 
   const selectedSchool = useMemo(
     () => schools.find((school) => school.school_uid === selectedSchoolUid) ?? null,
@@ -193,6 +201,45 @@ export default function Home() {
     }
   }, [selectedViloyat])
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadUserScore() {
+      if (!tg?.initData) return
+
+      try {
+        const res = await fetch('/api/user/me', {
+          headers: {
+            'x-telegram-init-data': tg.initData,
+          },
+        })
+        const data = (await res.json()) as UserMeResponse
+        if (!res.ok || !data.ok) return
+
+        if (!cancelled) {
+          setScore({
+            balance: data.balance,
+            trustCredits: data.trustCredits,
+          })
+        }
+
+        if (data.blocked) {
+          tg.showAlert(
+            'Ваш аккаунт заблокирован из-за нарушений. Обратитесь к администратору.'
+          )
+        }
+      } catch (error) {
+        console.error('Failed to load user score:', error)
+      }
+    }
+
+    loadUserScore()
+
+    return () => {
+      cancelled = true
+    }
+  }, [tg])
+
   if (!mounted) {
     return <main className="mini-shell" />
   }
@@ -212,6 +259,13 @@ export default function Home() {
 
     if (!selectedViloyat || !selectedSchool || !category || !description) {
       tg?.showAlert('⚠️ Заполните регион, школу, категорию и описание проблемы')
+      return
+    }
+
+    if ((score?.trustCredits ?? 1) <= 0) {
+      tg?.showAlert(
+        'Ваш аккаунт заблокирован из-за нарушений. Обратитесь к администратору.'
+      )
       return
     }
 
@@ -312,6 +366,18 @@ export default function Home() {
               Опишите, что произошло. Мы передадим обращение в нужный отдел и сохраним ваши
               данные в безопасности.
             </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="chip-btn">💰 {score?.balance ?? 0} баллов</span>
+              <span className="chip-btn">⭐ {score?.trustCredits ?? 3}/3</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href="/profile" className="chip-btn">
+                Профиль
+              </a>
+              <a href="/shop" className="chip-btn">
+                Лавка
+              </a>
+            </div>
             <div>
               <label className="field-label">Я</label>
               <div className="segment">

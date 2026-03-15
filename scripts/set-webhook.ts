@@ -47,11 +47,13 @@ async function main() {
     body: JSON.stringify({
       commands: [
         { command: 'start', description: 'Открыть мини-приложение' },
+        { command: 'mystat', description: 'Моя статистика и баллы' },
+        { command: 'shop', description: 'Лавка наград' },
         { command: 'close', description: 'Закрыть заявку: /close REQ-XXXX' },
       ],
     }),
   })
-  console.log('✅ Commands updated: /start, /close')
+  console.log('✅ Commands updated: /start, /mystat, /shop, /close')
 
   if (isHttpsAppUrl) {
     await callTelegram('setChatMenuButton', {
