@@ -37,18 +37,51 @@ type SchoolsResponse = {
   schools: SchoolOption[]
 }
 
+const ROLE_OPTIONS = [
+  { id: 'student', label: 'Ученик' },
+  { id: 'teacher', label: 'Учитель' },
+  { id: 'parent', label: 'Родитель' },
+] as const
+
+type ReporterRole = (typeof ROLE_OPTIONS)[number]['id']
+
 const CATEGORIES = [
-  { id: 'remont',      label: '🔧 Ремонт',         icon: '🔧' },
-  { id: 'elektr',      label: '⚡ Электричество',   icon: '⚡' },
-  { id: 'joy',         label: '🏫 Нехватка мест',   icon: '🏫' },
-  { id: 'shikoyat',    label: '📝 Жалоба/Предложение', icon: '📝' },
+  { id: 'remont', label: 'Ремонт' },
+  { id: 'elektr', label: 'Электричество' },
+  { id: 'joy', label: 'Нехватка мест' },
+  { id: 'shikoyat', label: 'Жалоба / Предложение' },
 ]
 
-const SUBCATEGORIES: Record<string, string[]> = {
-  remont:   ['Спортзал', 'Столовая', 'Актовый зал', 'Кровля', 'Отопление', 'Сантехника'],
-  elektr:   ['Нет электричества', 'Нет интернета', 'Нет освещения'],
-  joy:      ['Переполненность', 'Нет кабинетов', 'Нет мебели'],
-  shikoyat: ['Учителя', 'Администрация', 'Учебные материалы', 'Другое'],
+type SubcategoryOption = {
+  value: string
+  label: string
+}
+
+const SUBCATEGORIES: Record<string, SubcategoryOption[]> = {
+  remont: [
+    { value: 'Спортзал', label: 'Спортзал' },
+    { value: 'Столовая', label: 'Столовая' },
+    { value: 'Актовый зал', label: 'Актовый зал' },
+    { value: 'Кровля', label: 'Кровля' },
+    { value: 'Отопление', label: 'Отопление' },
+    { value: 'Сантехника', label: 'Сантехника' },
+  ],
+  elektr: [
+    { value: 'Нет электричества', label: 'Нет электричества' },
+    { value: 'Нет интернета', label: 'Нет интернета' },
+    { value: 'Нет освещения', label: 'Нет освещения' },
+  ],
+  joy: [
+    { value: 'Переполненность', label: 'Переполненность' },
+    { value: 'Нет кабинетов', label: 'Нет кабинетов' },
+    { value: 'Нет мебели', label: 'Нет мебели' },
+  ],
+  shikoyat: [
+    { value: 'Учителя', label: 'Учителя' },
+    { value: 'Администрация', label: 'Администрация' },
+    { value: 'Учебные материалы', label: 'Учебные материалы' },
+    { value: 'Другое', label: 'Другое' },
+  ],
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -64,7 +97,7 @@ export default function Home() {
   const [directoryError, setDirectoryError] = useState('')
   const [category, setCategory] = useState('')
   const [subcategory, setSubcategory] = useState<string[]>([])
-  const [role, setRole] = useState<'student' | 'teacher'>('student')
+  const [role, setRole] = useState<ReporterRole>('student')
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -84,10 +117,6 @@ export default function Home() {
       webApp.expand()
       setTg(webApp)
       setUser(webApp.initDataUnsafe?.user ?? null)
-
-      // Apply Telegram theme colors
-      document.documentElement.style.setProperty('--tg-bg',   webApp.backgroundColor ?? '#ffffff')
-      document.documentElement.style.setProperty('--tg-text', webApp.textColor ?? '#000000')
     }
   }, [])
 
@@ -165,7 +194,7 @@ export default function Home() {
   }, [selectedViloyat])
 
   if (!mounted) {
-    return <main className="min-h-screen bg-gray-50" />
+    return <main className="mini-shell" />
   }
 
   function toggleSubcategory(sub: string) {
@@ -200,7 +229,7 @@ export default function Home() {
         category,
         subcategory,
         description,
-        role,
+        role: role,
         contact:      form.get('contact') ?? '',
         has_photo:    Boolean(photoFile),
         priority:     category === 'remont' && subcategory.length > 0 ? 'medium' : 'low',
@@ -237,7 +266,7 @@ export default function Home() {
       setSubmitted(true)
     } catch (err: unknown) {
       const errorMessage =
-        err instanceof Error && err.message ? err.message : 'Unknown error'
+        err instanceof Error && err.message ? err.message : 'Неизвестная ошибка'
       tg?.showAlert(`❌ Ошибка: ${errorMessage}`)
     } finally {
       setLoading(false)
@@ -247,243 +276,239 @@ export default function Home() {
   // ── Success screen ──────────────────────────────────────────────────────────
   if (submitted) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-6 p-8 bg-white">
-        <div className="text-6xl">✅</div>
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Заявка принята!</h2>
-          <p className="text-gray-500 mb-1">Ваш номер заявки:</p>
-          <p className="text-2xl font-mono font-bold text-blue-600">{requestId}</p>
+      <main className="mini-shell">
+        <div className="form-wrap flex min-h-[calc(100vh-3rem)] items-center">
+          <section className="form-card w-full p-7 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#3f9362] text-2xl text-white">
+              ✓
+            </div>
+            <h2 className="section-title mb-2">Жалоба отправлена</h2>
+            <p className="section-copy mb-2">Номер вашей заявки:</p>
+            <p className="mb-6 font-mono text-xl font-bold text-[#1f5c3d]">{requestId}</p>
+            <p className="caption-muted mb-6">
+              Мы рассмотрим обращение и уведомим вас в Telegram.
+            </p>
+            <button
+              type="button"
+              onClick={() => tg?.close()}
+              className="submit-btn"
+            >
+              Закрыть мини-приложение
+            </button>
+          </section>
         </div>
-        <p className="text-sm text-gray-400 text-center">
-          Министерство рассмотрит вашу жалобу и уведомит вас в Telegram.
-        </p>
-        <button
-          onClick={() => tg?.close()}
-          className="px-8 py-3 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600 transition"
-        >
-          Закрыть
-        </button>
-      </div>
+      </main>
     )
   }
 
   // ── Form ────────────────────────────────────────────────────────────────────
   return (
-    <main className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
-      <div className="bg-blue-600 text-white px-5 py-6">
-        <h1 className="text-xl font-bold">🏫 Maktab Infra</h1>
-        <p className="text-sm text-blue-100 mt-1">Подайте жалобу о проблеме в школе</p>
-        {user && (
-          <p className="text-xs text-blue-200 mt-1">
-            👤 {user.first_name} {user.last_name ?? ''}
-          </p>
-        )}
-      </div>
-
-      <form onSubmit={handleSubmit} className="p-4 space-y-5">
-        {/* Viloyat */}
-        <div className="card">
-          <label className="label">📍 Вилоят *</label>
-          <select
-            name="viloyat"
-            required
-            className="input"
-            value={selectedViloyat}
-            onChange={(e) => setSelectedViloyat(e.target.value)}
-          >
-            <option value="">Выберите вилоят</option>
-            {viloyatlar.map((v) => (
-              <option key={v} value={v}>{v}</option>
-            ))}
-          </select>
-          {directoryError && (
-            <p className="mt-2 text-sm text-red-600">{directoryError}</p>
-          )}
-        </div>
-
-        {/* School */}
-        <div className="card space-y-3">
-          <div>
-            <label className="label">🏫 Школа из базы (`/lib/maktab.json`) *</label>
-            <select
-              name="school_inn"
-              required
-              className="input"
-              disabled={!selectedViloyat || schoolsLoading}
-              value={selectedSchoolUid}
-              onChange={(e) => setSelectedSchoolUid(e.target.value)}
-            >
-              <option value="">
-                {selectedViloyat
-                  ? schoolsLoading
-                    ? 'Загрузка школ...'
-                    : 'Выберите школу'
-                  : 'Сначала выберите вилоят'}
-              </option>
-              {schools.map((school) => (
-                <option key={school.school_uid} value={school.school_uid}>
-                  {school.school_name} ({school.tuman}) — {school.inn}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">🔢 ИНН / Код школы</label>
-            <input
-              name="school_inn_preview"
-              className="input bg-gray-100"
-              value={selectedSchool?.inn ?? ''}
-              readOnly
-              placeholder="Выберите школу выше"
-            />
-          </div>
-          <div>
-            <label className="label">🏫 Название школы</label>
-            <input
-              name="school_name_preview"
-              className="input bg-gray-100"
-              value={selectedSchool?.school_name ?? ''}
-              readOnly
-              placeholder="Заполнится автоматически"
-            />
-          </div>
-          <div>
-            <label className="label">🧭 Район / Туман</label>
-            <input
-              name="tuman_preview"
-              className="input bg-gray-100"
-              value={selectedSchool?.tuman ?? ''}
-              readOnly
-              placeholder="Заполнится автоматически"
-            />
-          </div>
-        </div>
-
-        {/* Role toggle */}
-        <div className="card">
-          <label className="label">👤 Вы являетесь *</label>
-          <div className="flex rounded-xl overflow-hidden border border-gray-200">
-            {(['student', 'teacher'] as const).map(r => (
-              <button
-                key={r}
-                type="button"
-                onClick={() => setRole(r)}
-                className={`flex-1 py-2.5 text-sm font-medium transition ${
-                  role === r
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-white text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {r === 'student' ? '🎒 Ученик' : '👩‍🏫 Учитель'}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Category */}
-        <div className="card">
-          <label className="label">📋 Категория жалобы *</label>
-          <div className="grid grid-cols-2 gap-2">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => { setCategory(cat.id); setSubcategory([]) }}
-                className={`p-3 rounded-xl text-sm font-medium border-2 transition text-left ${
-                  category === cat.id
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
-                }`}
-              >
-                <span className="block text-lg mb-0.5">{cat.icon}</span>
-                {cat.label.replace(/^[^ ]+ /, '')}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Subcategory pills */}
-        {category && SUBCATEGORIES[category] && (
-          <div className="card">
-            <label className="label">🔍 Уточните проблему</label>
-            <div className="flex flex-wrap gap-2">
-              {SUBCATEGORIES[category].map(sub => (
-                <button
-                  key={sub}
-                  type="button"
-                  onClick={() => toggleSubcategory(sub)}
-                  className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                    subcategory.includes(sub)
-                      ? 'bg-blue-500 text-white border-blue-500'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-300'
-                  }`}
-                >
-                  {sub}
-                </button>
-              ))}
+    <main className="mini-shell pb-10">
+      <div className="form-wrap">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <section className="form-card space-y-3">
+            <h1 className="section-title">Отправить жалобу</h1>
+            <p className="section-copy">
+              Опишите, что произошло. Мы передадим обращение в нужный отдел и сохраним ваши
+              данные в безопасности.
+            </p>
+            <div>
+              <label className="field-label">Я</label>
+              <div className="segment">
+                {ROLE_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setRole(option.id)}
+                    className={`segment-btn ${role === option.id ? 'segment-btn-active' : ''}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          </section>
 
-        {/* Description */}
-        <div className="card">
-          <label className="label">📝 Описание проблемы *</label>
-          <textarea
-            name="description"
-            required
-            rows={4}
-            className="input resize-none"
-            placeholder="Опишите проблему подробно..."
-          />
-        </div>
+          <section className="form-card space-y-4">
+            <h2 className="section-title">Информация о школе</h2>
+            <p className="section-copy">
+              Укажите точные данные школы, чтобы мы направили обращение в нужное управление
+              образования.
+            </p>
 
-        {/* Photo upload */}
-        <div className="card">
-          <label className="label">📷 Фото проблемы (необязательно)</label>
-          <label className="flex flex-col items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:border-blue-400 transition">
-            {photoFile ? (
-              <>
-                <span className="text-2xl">✅</span>
-                <span className="text-sm text-green-600 font-medium">{photoFile.name}</span>
-                <span className="text-xs text-gray-400">Нажмите для замены</span>
-              </>
-            ) : (
-              <>
-                <span className="text-3xl">📸</span>
-                <span className="text-sm text-gray-500">Нажмите для выбора фото</span>
-                <span className="text-xs text-gray-400">Откроет камеру на телефоне</span>
-              </>
+            <div>
+              <label className="field-label">Регион</label>
+              <select
+                name="viloyat"
+                required
+                className="field-control"
+                value={selectedViloyat}
+                onChange={(e) => setSelectedViloyat(e.target.value)}
+              >
+                <option value="">Выберите регион</option>
+                {viloyatlar.map((viloyat) => (
+                  <option key={viloyat} value={viloyat}>
+                    {viloyat}
+                  </option>
+                ))}
+              </select>
+              {directoryError && <p className="error-copy">{directoryError}</p>}
+            </div>
+
+            <div>
+              <label className="field-label">Школа</label>
+              <select
+                name="school"
+                required
+                className="field-control"
+                disabled={!selectedViloyat || schoolsLoading}
+                value={selectedSchoolUid}
+                onChange={(e) => setSelectedSchoolUid(e.target.value)}
+              >
+                <option value="">
+                  {selectedViloyat
+                    ? schoolsLoading
+                      ? 'Загружаем школы...'
+                      : 'Выберите школу'
+                    : 'Сначала выберите регион'}
+                </option>
+                {schools.map((school) => (
+                  <option key={school.school_uid} value={school.school_uid}>
+                    {school.school_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="field-label">Код школы</label>
+                <input
+                  name="school_code"
+                  className="field-control"
+                  value={selectedSchool?.inn ?? ''}
+                  readOnly
+                  placeholder="например SCH-1024"
+                />
+              </div>
+              <div>
+                <label className="field-label">Район</label>
+                <input
+                  name="district"
+                  className="field-control"
+                  value={selectedSchool?.tuman ?? ''}
+                  readOnly
+                  placeholder="Укажите район"
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="form-card space-y-4">
+            <div>
+              <label className="field-label">Категория проблемы</label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORIES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setCategory(item.id)
+                      setSubcategory([])
+                    }}
+                    className={`chip-btn ${category === item.id ? 'chip-btn-active' : ''}`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {category && SUBCATEGORIES[category] && (
+              <div>
+                <label className="field-label">Уточнение проблемы</label>
+                <div className="flex flex-wrap gap-2">
+                  {SUBCATEGORIES[category].map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => toggleSubcategory(option.value)}
+                      className={`chip-btn ${
+                        subcategory.includes(option.value) ? 'chip-btn-soft-active' : ''
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
+
+            <div>
+              <label className="field-label">Опишите проблему</label>
+              <textarea
+                name="description"
+                required
+                rows={5}
+                className="field-control textarea-control"
+                placeholder="Подробно опишите, что произошло, где это случилось и другие важные детали."
+              />
+            </div>
+
+            <div>
+              <label className="field-label">Фото (необязательно)</label>
+              <label className="file-dropzone">
+                {photoFile ? (
+                  <>
+                    <span className="file-dropzone-title">{photoFile.name}</span>
+                    <span className="file-dropzone-copy">Нажмите, чтобы заменить фото</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="file-dropzone-title">Нажмите, чтобы загрузить фото</span>
+                    <span className="file-dropzone-copy">JPG или PNG, до 10 МБ</span>
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className="form-card space-y-4">
+            <h2 className="section-title">Контакт (необязательно)</h2>
             <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)}
+              name="contact"
+              className="field-control"
+              placeholder="Телефон или username в Telegram"
             />
-          </label>
-        </div>
+            <p className="caption-muted">
+              Контакт нужен только для уточнения деталей обращения.
+            </p>
 
-        {/* Contact */}
-        <div className="card">
-          <label className="label">📞 Контакт (необязательно)</label>
-          <input
-            name="contact"
-            className="input"
-            placeholder="Телефон или Telegram username"
-          />
-        </div>
-
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={loading || !category || !selectedViloyat || !selectedSchool}
-          className="w-full py-4 bg-blue-500 text-white font-bold rounded-2xl shadow-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition text-base"
-        >
-          {loading ? '⏳ Отправка...' : '📤 Отправить жалобу'}
-        </button>
-      </form>
+            <button
+              type="submit"
+              disabled={loading || !category || !selectedViloyat || !selectedSchool}
+              className="submit-btn"
+            >
+              {loading ? 'Отправка...' : 'Отправить жалобу'}
+            </button>
+            <p className="caption-muted">
+              Отправляя форму, вы подтверждаете достоверность информации.
+            </p>
+            {user && (
+              <p className="caption-muted">
+                Авторизован: {user.first_name} {user.last_name ?? ''}
+              </p>
+            )}
+          </section>
+        </form>
+      </div>
     </main>
   )
 }

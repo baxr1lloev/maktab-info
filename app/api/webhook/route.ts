@@ -27,8 +27,11 @@ function asBoolean(value: unknown): boolean {
   return false
 }
 
-function normalizeRole(value: unknown): 'student' | 'teacher' {
-  return asOptionalString(value)?.toLowerCase() === 'teacher' ? 'teacher' : 'student'
+function normalizeRole(value: unknown): 'student' | 'teacher' | 'parent' {
+  const normalized = asOptionalString(value)?.toLowerCase()
+  if (normalized === 'teacher') return 'teacher'
+  if (normalized === 'parent') return 'parent'
+  return 'student'
 }
 
 export async function POST(req: NextRequest) {
